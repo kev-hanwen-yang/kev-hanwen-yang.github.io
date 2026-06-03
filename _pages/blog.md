@@ -2,6 +2,7 @@
 layout: default
 permalink: /blog/
 title: blog
+description: Research notes on self-supervised video representation learning, latent world models, and embodied intelligence.
 nav: true
 nav_order: 1
 pagination:
