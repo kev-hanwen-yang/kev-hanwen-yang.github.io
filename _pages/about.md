@@ -25,6 +25,6 @@ latest_posts:
   limit: 3 # leave blank to include all the blog posts
 ---
 
-I'm an independent machine learning researcher based in Australia. My work focuses on self-supervised learning from video and latent predictive world models — JEPA-style architectures that learn to predict in representation space instead of reconstructing raw pixels. I'm interested in how these models can support embodied intelligence: agents that build a useful internal model of the world from observation alone.
+I'm an independent machine learning researcher based in Melbourne, Australia. My work focuses on self-supervised learning from video and latent predictive world models — JEPA-style architectures that learn to predict in representation space. I'm interested in how these models can support embodied intelligence: agents that build a useful internal model of the world from observation alone.
 
 Right now I'm reproducing and analyzing LeWM, a compact latent world model. I'm working through its training objective — including the SIGReg regularizer and action-conditioned latent prediction — and running a diagnostic study of how its predicted latent trajectories behave over long open-loop rollouts. I write the experiments and findings up as technical notes [on this site]({{ '/blog/' | relative_url }}).
