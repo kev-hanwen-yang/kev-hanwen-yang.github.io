@@ -269,7 +269,7 @@ Fourth, repeat the diagnostic suite across more models and environments. The sam
 
 ### Where this sits in current work
 
-The field is already building fixes for this degradation, from several directions. V-JEPA 2's action-conditioned predictor adds a rollout loss on top of teacher forcing, training the model on its own multi-step predictions rather than only single steps — directly targeting the train/test mismatch that LeWM's one-step MSE leaves untouched. Hierarchical planning with latent world models reduces the number of error-prone steps by reasoning at a coarser temporal scale. LiveWorld, in the video-generation setting, adds explicit persistent-state machinery so that entities are not frozen when they leave view. These differ in what they touch — the training signal, the planning hierarchy, the architecture — but they share a starting assumption that the rollout degrades. What has been missing is a mechanical account of *how* it degrades inside a latent world model. That account is what this work aims to add, and it is what would tell you which of these fixes is addressing the actual cause rather than the symptom.
+The field is already building fixes for this degradation, from several directions. V-JEPA 2's action-conditioned predictor adds a rollout loss on top of teacher forcing, training the model on its own multi-step predictions rather than only single steps — directly targeting the train/test mismatch that LeWM's one-step MSE leaves untouched. Hierarchical planning with latent world models reduces the number of error-prone steps by reasoning at a coarser temporal scale. LiveWorld, in the video-generation setting, adds explicit persistent-state machinery so that entities are not frozen when they leave view. These differ in what they touch — the training signal, the planning hierarchy, the architecture — but they share a starting assumption that the rollout degrades or become frozen. What has been missing is a mechanical account of *how* it degrades inside a latent world model. That account is what this work aims to add, and it is what would tell you which of these fixes is addressing the actual cause rather than the symptom.
 
 ### Next Step
 
@@ -381,7 +381,7 @@ Report: `..._norm_trajectory_report.json`.
 
 <div id="fig-straightness_pred_vs_true_by_horizon">
 
-{% include figure.liquid path="assets/img/lewm/straightness_pred_vs_true_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Temporal straightness (mean cosine between consecutive velocity vectors) vs horizon. The predicted trajectory is straighter (~0.70) than the true encoded trajectory (~0.53) at every horizon." %}
+{% include figure.liquid path="assets/img/lewm/straightness_pred_true_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Temporal straightness (mean cosine between consecutive velocity vectors) vs horizon. The predicted trajectory is straighter (~0.70) than the true encoded trajectory (~0.53) at every horizon." %}
 
 <a class="jumpref" href="#ref-straightness_pred_vs_true_by_horizon">&#8617;&#xfe0e; back to text</a>
 
@@ -495,6 +495,16 @@ Code, split configuration, probe and rollout scripts, raw JSON reports, and plot
     var id = decodeURIComponent(link.getAttribute('href').slice(1));
     var target = document.getElementById(id);
     if (!target) return;
+    // When jumping TO a figure, point that figure's "back to text" at the exact
+    // reference clicked (an image may be referenced from several places).
+    if (id.indexOf('fig-') === 0) {
+      var src = link.previousElementSibling;
+      while (src && !(src.id && src.id.indexOf('ref-') === 0)) src = src.previousElementSibling;
+      if (src) {
+        var back = target.querySelector('a.jumpref[href^="#ref-"]');
+        if (back) back.setAttribute('href', '#' + src.id);
+      }
+    }
     for (var el = target; el; el = el.parentElement) {
       if (el.tagName === 'DETAILS') el.open = true;   // open any collapsed <details>
     }
