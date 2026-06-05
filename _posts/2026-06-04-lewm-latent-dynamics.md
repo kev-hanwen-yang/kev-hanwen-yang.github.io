@@ -11,11 +11,11 @@ toc:
   sidebar: left
 ---
 
-**Code, figures, and reproduction commands: [github.com/kev-hanwen-yang/le-wm](https://github.com/kev-hanwen-yang/le-wm)**
+*Reproduction details and the full diagnostic set: see the [Reproducibility and references](#reproducibility-and-references) below.*
 
 ## Abstract
 
-Latent world models are attractive for planning because they predict future states directly in a compact representation, without the cost of reconstructing pixels — potentially allowing the model to focus more capacity on predictive dynamics rather than pixel-level reconstruction. However, successful planning demands more than producing latents that look statistically well-behaved across the dataset: the predicted latents must also preserve task-relevant physical state when rolled out open-loop over long horizons.
+Latent world models are attractive for planning because they predict future states directly in a compact representation — potentially allowing the model to focus more capacity on predictive dynamics rather than pixel-level reconstruction. However, successful planning demands more than producing latents that look statistically well-behaved across the dataset: the predicted latents must also preserve task-relevant physical state when rolled out open-loop over long horizons.
 
 I study this question in LeWM, an end-to-end JEPA-style latent world model stabilized by a distributional regularizer called SIGReg, using the released Push-T checkpoint. Across 1000 test episodes, I roll out the predictor open-loop for 18 predictor steps at frame-skip 5 and evaluate both decoded physical quantities and latent geometry. The predicted latents remain globally well-formed: their norms stay within the encoder reference shell throughout rollout.
 
@@ -29,52 +29,51 @@ A latent world model can perform well on short-horizon prediction and still fail
 
 This distinction matters because latent planning relies on imagination. During each imagined rollout, the encoder provides the initial latent state, but the future is carried almost entirely by the predictor: each predicted latent becomes the input for the next prediction. If the predictor slightly underestimates motion, averages over possible futures, or drifts away from the correct physical trajectory, those errors can compound before the planner ever executes an action. Closed-loop MPC can reduce the damage by replanning from real observations, but it does not remove the need for the model to produce accurate imagined futures over the planning horizon.
 
-This is the regime I want to examine. LeWM demonstrates strong end-to-end training stability and meaningful frozen-encoder probes, but its evaluations stop short of the long-horizon predictor regime: frozen-encoder probes at horizon zero test the encoder, and short-horizon CEM planning reports aggregate task success. Neither shows how the predicted physical state and latent geometry evolve when the predictor is rolled forward open-loop for many steps. 
+This is the regime I want to examine. LeWM demonstrates strong end-to-end training stability and meaningful frozen-encoder probes, but its evaluations stop short of the long-horizon predictor regime: frozen-encoder probes at horizon zero test the encoder, and short-horizon CEM planning reports aggregate task success. Neither shows how the predicted physical state and latent geometry evolve when the predictor is rolled forward open-loop for many steps.
 
-The deeper issue is that local **one-step and long-horizon predictions are not the same objective**. A deterministic predictor trained with MSE is encouraged to predict the **conditional average** next latent under its training distribution. When the encoded state is compressed, the action-conditioned dynamics are ambiguous, or the future contains contact-rich variation, this averaging can quietly suppress motion and erase persistent state. In pixel-space video prediction, this kind of averaging appears as blur. In latent dynamics, it may appear as something less visually obvious: slow latent velocity, overly straight trajectories, and physically wrong but statistically plausible futures. 
+The deeper issue is that local **one-step and long-horizon predictions are not the same objective**. A deterministic predictor trained with MSE is encouraged to predict the **conditional average** next latent under its training distribution. When the encoded state is compressed, the action-conditioned dynamics are ambiguous, or the future contains contact-rich variation, this averaging can quietly suppress motion and erase persistent state. In pixel-space video prediction, this kind of averaging appears as blur. In latent dynamics, it may appear as something less visually obvious: slow latent velocity, overly straight trajectories, and physically wrong but statistically plausible futures.
 
-This concern is not specific to LeWM. Recent world-model work is increasingly shaped by the same pressure point: **V-JEPA 2 (Assran et al., 2025)** identifies long-horizon rollout degradation as a central limitation, HWM (2026, arXiv 2604.03208) proposes hierarchical planning to reduce long-horizon prediction burden, and LiveWorld (Duan et al., 2026, arXiv 2603.07145) introduces explicit memory and dynamic-entity machinery to continually evolve persistent states when entities leave view. These approaches differ architecturally, but they respond to a shared problem: **stable representations alone do not guarantee persistent, action-relevant dynamics.**
+This concern is not specific to LeWM. Recent world-model work is increasingly shaped by the same pressure point: V-JEPA 2 (Assran et al., 2025) identifies long-horizon rollout degradation as a central limitation, HWM (2026, arXiv 2604.03208) proposes hierarchical planning to reduce long-horizon prediction burden, and LiveWorld (Duan et al., 2026, arXiv 2603.07145) introduces explicit memory and dynamic-entity machinery to continually evolve persistent states when entities leave view. These approaches differ architecturally, but they respond to a shared problem: **stable representations alone do not guarantee persistent, action-relevant dynamics.**
 
 What is still missing is a concrete empirical characterization of how this failure appears inside a representative latent world model. Does the predicted latent collapse? Does it leave the manifold? Does it preserve global statistics while losing the correct physical future? Or is the one-step predictor itself already dynamically under-amplified? This blog studies those questions in **LeWM, rolled out on Push-T**.
-****
 
 ## What LeWM is
 
 LeWM follows the Joint-Embedding Predictive Architecture (JEPA) recipe for world modeling. Instead of predicting future pixels, it learns a compact latent representation of each image observation and trains a predictor to model how that latent evolves under actions. This is what makes the approach attractive for planning: if the latent space captures the task-relevant physical state, a planner can search over imagined futures cheaply, without reconstructing images at every step. What distinguishes LeWM from earlier JEPA-style world models is that this setup is trained end-to-end from raw pixels on a single GPU, without stop-gradients, an EMA teacher, or a pretrained encoder.
 
-At a high level, LeWM has two learned components: an **encoder** and a **predictor**. 
+At a high level, LeWM has two learned components: an **encoder** and a **predictor**.
 
 **The encoder** maps an image observation into a latent vector:
 
-$z_t​=enc_θ​(o_t​)$
+$$z_t = \text{enc}_\theta(o_t)$$
 
-Here, $o_t$ is the image observation at time t, encθ is the encoder with parameters $θ$, and $z_t$ is the latent representation of that observation. In the released Push-T model, this latent is 192-dimensional. Intuitively, $z_t$ compresses the physical scene — including the agent, block position, and block angle — into a vector useful for prediction and planning.
+Here, $$o_t$$ is the image observation at time $$t$$, $$\text{enc}_\theta$$ is the encoder with parameters $$\theta$$, and $$z_t$$ is the latent representation of that observation. In the released Push-T model, this latent is 192-dimensional. Intuitively, $$z_t$$ compresses the physical scene — including the agent, block position, and block angle — into a vector useful for prediction and planning.
 
 **The predictor** takes a short history of encoded latents together with the corresponding action input, and predicts the next latent. In simplified one-step notation:
 
-$ẑ_{t+1} ​=f_ϕ​(z_t​,a_t​)$
+$$\hat{z}_{t+1} = f_\phi(z_t, a_t)$$
 
-Here, $a_t$ is the action, $f_ϕ$ is the predictor with parameters $\phi$, and $ẑ_{t+1}$ is the predicted next latent. In the actual Push-T setup studied here, LeWM uses a 3-frame context window and frame-skip 5, so each predictor step corresponds to five raw environment steps.
+Here, $$a_t$$ is the action, $$f_\phi$$ is the predictor with parameters $$\phi$$, and $$\hat{z}_{t+1}$$ is the predicted next latent. In the actual Push-T setup studied here, LeWM uses a 3-frame context window and frame-skip 5, so each predictor step corresponds to five raw environment steps.
 
 LeWM is trained with two losses. The first is the next-latent prediction loss:
 
-$L_{pred}​=∥ẑ^t+1​−zt+1​∥^2_2​$
+$$L_{\text{pred}} = \lVert \hat{z}_{t+1} - z_{t+1} \rVert_2^2$$
 
-Here, $z_{t+1}$ is the encoder output on the actual next frame, and $\hat{z}_{t+1}$ is the predictor’s estimate of that latent. The loss simply penalizes the squared distance between the predicted latent and the real next-frame latent. In words: the predictor is trained to land close to the encoder’s representation of what actually happened next.
+Here, $$z_{t+1}$$ is the encoder output on the actual next frame, and $$\hat{z}_{t+1}$$ is the predictor’s estimate of that latent. The loss simply penalizes the squared distance between the predicted latent and the real next-frame latent. In words: the predictor is trained to land close to the encoder’s representation of what actually happened next.
 
 On its own, however, this prediction loss can lead to a trivial solution. The encoder could map every image to the same constant vector, making future prediction easy but useless. This is the standard JEPA representation-collapse problem. LeWM prevents this with **SIGReg**, a distributional regularizer that pushes the encoder’s latent outputs toward an isotropic Gaussian distribution. The practical effect is that the encoder cannot collapse all observations to a constant without paying a large regularization cost.
 
-One detail will matter later: SIGReg regularizes the encoder’s latent outputs during training, not the predictor’s open-loop outputs at inference time. The predictor is only indirectly shaped by SIGReg, through its MSE targets $z_{t+1}$. So if predicted latents remain norm-stable during rollout, that stability is not explicitly enforced step by step; it is inherited indirectly from the learned dynamics.
+One detail will matter later: SIGReg regularizes the encoder’s latent outputs during training, not the predictor’s open-loop outputs at inference time. The predictor is only indirectly shaped by SIGReg, through its MSE targets $$z_{t+1}$$. So if predicted latents remain norm-stable during rollout, that stability is not explicitly enforced step by step; it is inherited indirectly from the learned dynamics.
 
 The key train-test distinction is the difference between one-step prediction and open-loop rollout. During training, the predictor receives real encoded latents as input:
 
-$z^t+1​=fϕ​(zt​,at​)$
+$$\hat{z}_{t+1} = f_\phi(z_t, a_t)$$
 
 But during open-loop rollout, the predictor is fed its own previous prediction:
 
-$z^t+1​=fϕ​(z^t​,at​)$
+$$\hat{z}_{t+1} = f_\phi(\hat{z}_t, a_t)$$
 
-The symbol$\hat{z}_t$ now refers to the model’s own predicted latent at time t, not the encoder’s latent from a real observation. This difference is small in notation but large in consequence. Once the model makes an error, the next prediction is conditioned on that error. Over many steps, small deviations can compound into a trajectory that remains statistically plausible but no longer tracks the correct physical future.
+The symbol $$\hat{z}_t$$ now refers to the model’s own predicted latent at time t, not the encoder’s latent from a real observation. This difference is small in notation but large in consequence. Once the model makes an error, the next prediction is conditioned on that error. Over many steps, small deviations can compound into a trajectory that remains statistically plausible but no longer tracks the correct physical future.
 
 LeWM uses this kind of latent rollout during planning. Starting from an encoded initial observation, the predictor imagines future latent states under candidate action sequences. A planner, such as CEM, can then score those imagined futures against a latent goal and choose actions accordingly. In closed-loop MPC, the agent may re-encode the real observation after executing some actions, but inside each planning rollout the future is still carried by the predictor. That is why predictor fidelity matters.
 
@@ -92,7 +91,7 @@ The physical-state probes follow the paper’s protocol. For each of three Push-
 
 To track how physical-state recoverability changes with rollout horizon, I report normalized MSE. For each quantity, the probe’s mean squared error is divided by the error of a constant predictor that always guesses the test-set mean. A normalized MSE of 1.0 therefore corresponds to the trivial baseline: ignoring the latent entirely and predicting the dataset average. Values below 1.0 mean the probe is extracting useful information from the latent. Values above 1.0 mean that, under this probe, the predicted latent is less informative than the constant-mean baseline for that physical quantity. This threshold is the reference point for the degradation curves that follow.
 
-As a sanity check, these probes reproduce the paper’s Table 1 accuracy on real encoded latents before rollout (full statistics and code on GitHub link):
+As a sanity check, these probes reproduce the paper’s Table 1 accuracy on real encoded latents before rollout:
 
 | Physical quantity | Probe | This work (MSE) | Paper (MSE) |
 | --- | --- | --- | --- |
@@ -100,9 +99,8 @@ As a sanity check, these probes reproduce the paper’s Table 1 accuracy on real
 | Agent location | MLP | 0.005 | 0.004 |
 | Block location | Linear | 0.021 | 0.029 |
 | Block location | MLP | 0.001 | 0.001 |
-| Block angle | Linear | 0.176 | 0.187 |
-| Block angle | MLP | 0.027 | 0.021
- |
+| Block angle | Linear | 0.175 | 0.187 |
+| Block angle | MLP | 0.027 | 0.021 |
 
 These horizon-zero values are far below the normalized-MSE failure threshold, confirming that the probes recover physical state when their inputs are real encoder latents. The question is what happens when those same probes are applied to latents produced by the predictor during open-loop rollout. That is the puzzle of the next section.
 
@@ -120,13 +118,13 @@ When the probes trained on real encoded latents are applied to the predictor's o
 
 Taken literally, these three shapes invite three different explanations. Block location looks like gradual compounding drift. Agent location looks like early saturation or defaulting. Block angle looks like a fragile variable that survives briefly and then fails.
 
-Pearson correlation (chart in the appendix) between predicted and true targets tracks the same ordering across horizons as normalized MSE, with one nuance: even where normalized MSE exceeds the constant-mean baseline, correlations do not collapse to zero — at horizon 100, MLP block location still shows r ≈ 0.35 and agent location r ≈ 0.21. This means the predicted latents are not pure noise. They still carry some coarse state information, but the frozen probe can no longer convert that residual ordering into accurate physical predictions under the MSE metric.
+Pearson correlation (insert footnote here and link to the chart: Probe Pearson r between predicted and true targets vs horizon.) between predicted and true targets tracks the same ordering across horizons as normalized MSE, with one nuance: even where normalized MSE exceeds the constant-mean baseline, correlations do not collapse to zero — at horizon 100, MLP block location still shows r ≈ 0.35 and agent location r ≈ 0.21. This means the predicted latents are not pure noise. They still carry some coarse state information, but the frozen probe can no longer convert that residual ordering into accurate physical predictions under the MSE metric.
 
-But one more observation does not fit cleanly into this three-mechanism story. At horizon zero the MLP probes are substantially better than the linear probes for all three quantities — the linear-versus-MLP gap that the LeWM paper documents in Table 1, and that signals non-linearly accessible structure in the latent. Under rollout, this gap shrinks. For block location the linear and MLP curves are essentially overlapping from horizon 35 onward; for block angle they converge by horizon 50; only agent location holds a small gap throughout. The rollout is therefore not merely damaging one particular readout of physical state. It is eroding the richer latent structure that made non-linear probing useful in the first place. Whatever is going wrong is wiping out both kinds of accessible information at the same time, and on a similar schedule. That is hard to reconcile with three independent failure modes operating on three independent pieces of the latent.
+But one more observation does not fit cleanly into this three-mechanism story. At horizon zero the MLP probes are substantially better than the linear probes for all three quantities — the linear-versus-MLP gap that the LeWM paper documents in Table 1, and that signals non-linearly accessible structure in the latent. Under rollout, this gap shrinks. For block location the linear and MLP curves are essentially overlapping from horizon 35 onward; for block angle they converge until horizon 50 and then diverge with a gap; only agent location holds a small gap throughout. The rollout is therefore not merely damaging one particular readout of physical state. It is eroding the richer latent structure that made non-linear probing useful in the first place. Whatever is going wrong is wiping out both kinds of accessible information at the same time, and on a similar schedule. That is hard to reconcile with three independent failure modes operating on three independent pieces of the latent.
 
 A methodological aside is also worth flagging. The LeWM paper's Figure 7 shows decoded latent rollouts at horizon 35 that look visually plausible. The quantitative picture at the same horizon is starker: block location MLP normalized MSE is around 0.23 (well below threshold), block angle is at 0.89 (effectively at the threshold), and agent location MLP is at roughly 1.05 (just past it). In other words, a decoded frame can look reasonable even when task-relevant physical quantities have already degraded substantially. This is not an objection to the paper's figure — qualitative rollouts are useful — but it is the kind of mismatch that a 1000-episode probe-based evaluation surfaces and a few decoded frames cannot.
 
-The physical probes reveal the symptom: three physical quantities degrade in three distinct ways, and the linear/MLP gap collapses as rollout progresses. The latent-geometry diagnostics ask what kind of predicted trajectory could produce that symptom. That is why the next step is to inspect the rollout latents directly.
+The physical probes reveal the symptom: three physical quantities degrade in three distinct ways. The latent-geometry diagnostics ask what kind of predicted trajectory could produce that symptom. That is why the next step is to inspect the rollout latents directly.
 
 ## The geometric picture: slow, straight, adrift
 
@@ -134,35 +132,35 @@ The probe results in the previous section tell us *what* is lost — three physi
 
 I start with what is preserved, because it is the part that makes the failure easy to miss.
 
-**The latent stays the right size.** A natural first worry is that the predicted latent might blow up, shrink to zero, or collapse into a small region during autoregressive rollout. It does not. The encoder’s latents have a tightly concentrated norm: across 2.1 million encoded frames, the mean L2 norm is 13.89 with a standard deviation of 0.82. **{footnote: [1](https://www.notion.so/Blog-367f2d591f8480f4adf9e0168c71d683?pvs=21)}** The predicted latents stay inside this shell throughout rollout. The predicted norm starts slightly high at 14.29 at horizon 15, drifts down to about 13.62 by horizon 60, and remains there; its z-score against the encoder reference never leaves the range −0.33 to +0.49. In magnitude terms, a predicted latent at horizon 100 is indistinguishable from a normal encoder output.
+**The latent stays the right size.** A natural first worry is that the predicted latent might blow up, shrink to zero, or collapse into a small region during autoregressive rollout. It does not. The encoder’s latents have a tightly concentrated norm: across 2.1 million encoded frames, the mean L2 norm is 13.89 with a standard deviation of 0.82. <a id="ref-norm_pred_vs_true_by_horizon"></a><a class="jumpref" href="#fig-norm_pred_vs_true_by_horizon">(see figure)</a> The predicted latents stay inside this shell throughout rollout. The predicted norm starts slightly high at 14.29 at horizon 15, drifts down to about 13.62 by horizon 60, and remains there; its z-score against the encoder reference never leaves the range −0.33 to +0.49. In magnitude terms, a predicted latent at horizon 100 is indistinguishable from a normal encoder output.
 
-This norm stability is consistent with LeWM’s SIGReg-shaped latent space, but it does not establish that SIGReg alone is responsible. ****SIGReg regularizes encoder outputs during training; predictor outputs inherit that geometry only indirectly through the MSE target latents.
+This norm stability is consistent with LeWM’s SIGReg-shaped latent space, but it does not establish that SIGReg alone is responsible. SIGReg regularizes encoder outputs during training; predictor outputs inherit that geometry only indirectly through the MSE target latents.
 
 That is the surprising part: by this one global measure, the rollout looks healthy. The next five diagnostics show that it is not.
 
-**The latent is in the wrong place.** The most direct measure is the squared distance between the predicted latent and the true encoded latent of the same future frame, averaged per dimension. **{footnote: 2}**  This grows from 0.062 at horizon 15 to 1.92 at horizon 100, saturating around horizon 60–70. The saturation value is the informative part. The encoder's latents have a per-dimension variance of about 1.0 (the mean norm of 13.89 is close to $√192 ≈ 13.86$, consistent with unit per-dimension variance), so two independent latents drawn from the distribution differ by roughly 2.0 per dimension on average. A per-dimension error of 1.92 means that at long horizon, the predicted latent is almost exactly as far from the true latent as a *randomly chosen* latent would be. It may still look plausible in broad distributional terms, but it has largely lost the information identifying this episode's specific future.
+**The latent is in the wrong place.** The most direct measure is the squared distance between the predicted latent and the true encoded latent of the same future frame, averaged per dimension. <a id="ref-latent_per_dim_mse_by_horizon"></a><a class="jumpref" href="#fig-latent_per_dim_mse_by_horizon">(see figure)</a>  This grows from 0.062 at horizon 15 to 1.92 at horizon 100, saturating around horizon 60–70. The saturation value is the informative part. The encoder latents have roughly unit variance per dimension. One quick sanity check is the norm: the latent dimension is 192, so if each dimension has variance about 1.0, a typical latent vector should have L2 norm around $$\sqrt{192} \approx 13.86$$. The measured mean norm is 13.89, which is almost exactly that value. This matters because two unrelated unit-variance latents are expected to have a squared difference of about 2.0 per dimension: each latent contributes about 1.0 variance, and the two variances add. So when the rollout’s per-dimension MSE to the true future approaches 1.92, the predicted latent is almost exactly as far from the true latent as a ***randomly chosen*** latent would be, not just a small local prediction error. It may still look plausible in broad distributional terms, but it has largely lost the information identifying this episode's specific future.
 
-**It drifts from the empirical manifold, but does not leave the distribution entirely.** A latent can be far from its specific target yet still be close to some other real encoded state. To test this, I measure the distance from each predicted latent to its nearest neighbor among real train/validation encoded latents, and compare it to the same nearest-neighbor distance for the true future latent. Predicted latents are consistently farther from the empirical encoded manifold than true future latents, by a factor of about 4.5 to 11 across horizons. The ratio peaks near 11× around horizon 25 and falls to about 4.5× by horizon 100. **{footnote: 3}** This does not mean the predicted latent is returning to the manifold; the absolute nearest-neighbor distance continues to grow. Rather, later true future latents also become farther from the finite reference set, likely because later-frame states occupy sparser regions of the sampled dataset.
+**It drifts from the empirical manifold, but does not leave the distribution entirely.** A latent can be far from its specific target yet still be close to some other real encoded state. To test this, I measure the distance from each predicted latent to its nearest neighbor among real train/validation encoded latents, and compare it to the same nearest-neighbor distance for the true future latent. Predicted latents are consistently farther from the empirical encoded manifold than true future latents, by a factor of about 4.5 to 11 across horizons. The ratio peaks near 11× around horizon 25 and falls to about 4.5× by horizon 100. <a id="ref-manifold_drift_ratio"></a><a class="jumpref" href="#fig-manifold_drift_ratio">(see figure)</a> This does not mean the predicted latent is returning to the manifold; the absolute nearest-neighbor distance continues to grow  <a id="ref-manifold_min_sq_l2"></a><a class="jumpref" href="#fig-manifold_min_sq_l2">(see figure)</a>. Rather, later true future latents also become farther from the finite reference set, likely because later-frame states occupy sparser regions of the sampled dataset.
 
-The ratio is therefore real but needs careful interpretation. In absolute terms, the predicted latent’s nearest-manifold distance remains much smaller (roughly 20 times) **{footnote: 4}** than its distance to the correct future latent. So the predicted latent is not flying into arbitrary empty space. It remains near the broad encoded distribution, but it is farther from the empirical manifold than a real future latent and far from the *correct* future latent. The right description is not off-manifold collapse. It is a wrong-but-plausible latent: statistically latent-like, but no longer anchored to the specific physical state it should represent.
+The ratio is therefore real but needs careful interpretation. In absolute terms, the predicted latent is still much closer to some real encoded latent than to the correct future latent. For example, at horizon 100, its nearest-manifold per-dimension MSE is about 0.09 <a id="ref-manifold_min_per_dim_mse"></a><a class="jumpref" href="#fig-manifold_min_per_dim_mse">(see figure)</a>, while its per-dimension MSE to the correct future latent is about 1.92 <a id="ref-latent_per_dim_mse_by_horizon-2"></a><a class="jumpref" href="#fig-latent_per_dim_mse_by_horizon">(see figure)</a> — roughly a 20× gap. So the predicted latent is not flying into arbitrary empty space; it remains near the broad encoded distribution, but not near the correct future state. The right description is not off-manifold collapse. It is a wrong-but-plausible latent: statistically latent-like, but no longer anchored to the specific physical state it should represent.
 
 Two trajectory diagnostics explain how the rollout gets there.
 
-**It moves too slowly.** I measure step-to-step velocity as the norm of the difference between consecutive latents. The true encoded trajectory moves at roughly 4 to 6 latent units per step, increasing over the episode as the dynamics become more active. **{footnote: 5}** The predicted trajectory moves at roughly 1.0 latent unit per step, nearly flat across rollout. The predicted latent is therefore moving about four to six times too slowly. This is the clearest geometric signature: the predictor is not frozen, but **it systematically under-amplifies the magnitude of real latent motion.**
+**It moves too slowly.** I measure step-to-step velocity as the norm of the difference between consecutive latents. The true encoded trajectory moves at roughly 4 to 6 latent units per step, increasing over the episode as the dynamics become more active. The predicted trajectory moves at roughly 1.0 latent unit per step, nearly flat across rollout. The predicted latent is therefore moving about four to six times too slowly. This is the clearest geometric signature: the predictor is not frozen, but **it systematically under-amplifies the magnitude of real latent motion.**
 
 {% include figure.liquid path="assets/img/lewm/latent_velocity_norm_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Figure: Step-to-step velocity norm of predicted versus true encoded latents by horizon. The true latent moves several times faster than the predicted latent at every horizon, and the gap does not close." %}
 
-**It also moves too straight.** Following the temporal-straightness measure LeWM studies during training — the mean cosine similarity between consecutive velocity vectors, where 1.0 means a perfectly straight path and 0 means uncorrelated turns — I measure straightness during rollout. **{footnote: 6}** The predicted trajectory is straighter than the real encoded trajectory at every horizon: the predicted mean cosine is about 0.70, while the true mean is about 0.53. The histogram makes the contrast sharper. **{footnote: 7}** Predicted velocities pile up near cosine 1.0, while true velocities spread more broadly around 0.5 to 0.7. The real latent trajectory curves as the physical state evolves; the predicted trajectory glides along a slower, more collinear path.
+**It also moves too straight.** Following the temporal-straightness measure LeWM studies during training — the mean cosine similarity between consecutive velocity vectors, where 1.0 means a perfectly straight path and 0 means uncorrelated turns — I measure straightness during rollout. <a id="ref-straightness_pred_vs_true_by_horizon"></a><a class="jumpref" href="#fig-straightness_pred_vs_true_by_horizon">(see figure)</a> The predicted trajectory is straighter than the real encoded trajectory at every horizon: the predicted mean cosine is about 0.70, while the true mean is about 0.53. The histogram makes the contrast sharper. <a id="ref-straightness_cosine_histogram"></a><a class="jumpref" href="#fig-straightness_cosine_histogram">(see figure)</a> Predicted velocities pile up near cosine 1.0, while true velocities spread more broadly around 0.5 to 0.8. The real latent trajectory curves as the physical state evolves; the predicted trajectory glides along a slower, more collinear path.
 
 This matters because straightness can be misleading. In the LeWM paper, latent path straightening is treated as a useful emergent representational property during training. But during rollout, straightness is only useful if it tracks the correct future. Here it appears together with low velocity and high target MSE. In that context, excessive straightness is not evidence of better dynamics; it is evidence of over-smoothed dynamics.
 
 Finally, I diagnose what kind of error this is.
 
-**The error is mostly episode-specific, not one shared drift direction.** A simple explanation would be that every rollout drifts toward the same average Push-T state. The systematic-bias diagnostic rules this out as the main cause. I decompose total error into a systematic component — the mean error vector shared across episodes — and a per-episode residual component. The systematic component is small: it explains only about 2–5% of total error energy across horizons. **{footnote: 8}** Its norm peaks around 3.2 near horizon 75 before declining. **{footnote: 9}** The remaining error is overwhelmingly episode-specific. The predictor is therefore not collapsing every rollout onto one shared destination. What the episodes share is the pattern of failure: slow, overly straight, and adrift from the empirical manifold.
+**The error is mostly episode-specific, not one shared drift direction.** A simple explanation would be that every rollout drifts toward the same average Push-T state. The systematic-bias diagnostic rules this out as the main cause. I decompose total error into a systematic component — the mean error vector shared across episodes — and a per-episode residual component. The systematic component is small: it explains only about 2–5% of total error energy across horizons. <a id="ref-bias_fraction_by_horizon"></a><a class="jumpref" href="#fig-bias_fraction_by_horizon">(see figure)</a> The shared bias component is tiny relative to total error at every horizon. <a id="ref-bias_vs_total_per_dim_error"></a><a class="jumpref" href="#fig-bias_vs_total_per_dim_error">(see figure)</a> The remaining error is overwhelmingly episode-specific. The predictor is therefore not collapsing every rollout onto one shared destination. What the episodes share is the pattern of failure: slow, overly straight, and adrift from the empirical manifold.
 
 Put together, the geometric picture is coherent. The predicted latent keeps the right magnitude and remains statistically well-formed, but it travels too slowly, too straight, and moderately away from the empirical manifold of real latents. Meanwhile, its MSE to the correct future latent rises to the scale of unrelated latents. The failure mode is not “the latent explodes” or “the latent collapses.” It is subtler: **the predictor produces stable-looking latents that follow a slow, over-straight, wrong trajectory**.
 
-A trajectory that is systematically too short and too straight is a natural geometric signature of **averaging**. If each one-step prediction is pulled toward the conditional average over possible next latents, the predicted step will be shorter than a typical real step, smoother than a typical real path, and more likely to land between densely sampled physical trajectories. This would naturally produce a latent that remains distributionally recognizable while drifting away from the correct future.
+A trajectory that is systematically too short and too straight is a natural geometric signature of **averaging**. If each one-step prediction is pulled toward the conditional average over possible next latents, the predicted step will be shorter than a typical real step, smoother than a typical real path, and more likely to land in the gaps between real trajectories. This would naturally produce a latent that remains distributionally recognizable while drifting away from the correct future.
 
 But this is still a hypothesis. Everything so far has been measured during open-loop rollout, where the predictor feeds on its own outputs. The slow, straight trajectory could be intrinsic to the **predictor’s one-step map**, or it could appear only after the predictor is **fed its own imperfect predictions and errors compound**. The next experiment isolates these possibilities with a teacher-forced control.
 
@@ -170,22 +168,22 @@ But this is still a hypothesis. Everything so far has been measured during open-
 
 The previous section left one question open. The predicted open-loop trajectory is too slow and too straight — but is that a property of the predictor's one-step map, or does it only appear once the predictor is fed its own imperfect predictions and the errors pile up? These are very different diagnoses. If the slowness is intrinsic to the one-step map, re-grounding during planning cannot repair it — each freshly predicted step is under-amplified again from a clean input. Frequent re-grounding can bound how far errors compound, but it cannot make the individual steps the right length and direction. If it is purely a compounding artifact, the one-step map is fine and the problem is mainly the feedback loop.
 
-To test this, I run a teacher-forced control. Instead of letting the predictor feed on its own previous latents, I feed it real encoded context latents from the actual trajectory at every horizon and ask it to predict only the next step. In other words, the input to the predictor stays on the encoder’s real trajectory. This removes the open-loop feedback loop and accumulated error. If under-amplification were mainly caused by compounding off-manifold feedback, teacher forcing should restore realistic one-step motion.
+To test this, I run a teacher-forced control. Instead of letting the predictor feed on its own previous latents, I feed it **real encoded context latents** from the actual trajectory at every horizon and ask it to predict only the next step. In other words, the input to the predictor stays on the encoder’s real trajectory. This removes the open-loop feedback loop and accumulated error. If under-amplification were mainly caused by compounding off-manifold feedback, teacher forcing should restore realistic one-step motion.
 
 **It does not.**
 
-The teacher-forced predicted one-step velocity stays almost flat around **33%** of the true encoded latent velocity from horizon 15 through 100. **{footnote}** Even when the predictor is handed real encoded context at every step, the step it takes is only about one-third the length of the true step. The velocity under-shoot is not created by feedback; it is already present in the learned one-step map.
+The teacher-forced predicted one-step velocity (the blue curve) stays almost flat around **33%** of the true encoded latent velocity from horizon 15 through 100. Even when the predictor is handed real encoded context at every step, the step it takes is only about one-third the length of the true step. The velocity under-shoot is not created by feedback; it is already present in the learned one-step map.
 
 {% include figure.liquid path="assets/img/lewm/teacher_forced_vs_open_loop_velocity_ratio.png" class="img-fluid rounded z-depth-1" caption="Figure: Predicted/true velocity ratio under teacher forcing (flat near 0.33) versus open-loop rollout (decaying to about 0.16), by horizon. The dashed line at 1.0 marks a faithful predictor. Both curves sit far below it — and far below the upper reference line where a predictor that merely added isotropic noise would land, which would push the ratio above 1.0. The predictor is damping real motion, not injecting noise." %}
 
 
-The open-loop curve tells the other half of the story. It starts at the same  0.33 ratio at horizon 15, then drops to about 0.16 by horizon 40 and stays near there for the rest of the rollout. Feeding the predictor its own already-under-amplified latents makes later steps even shorter. In that sense, feedback does not create the one-step damping, but it makes the rollout worse by compounding it.
+The open-loop curve (orange) tells the other half of the story. It starts at the same  0.33 ratio at horizon 15, then drops to about 0.16 by horizon 40 and stays near there for the rest of the rollout. Feeding the predictor its own already-under-amplified latents makes later steps even shorter. In that sense, feedback does not create the one-step damping, but it makes the rollout worse by compounding it.
 
-The error magnitudes confirm the same split from a different angle. Under teacher forcing, the per-dimension one-step error stays relatively small and nearly flat, growing only from about 0.06 to 0.14 across the rollout. **{footnote}** In open loop, the per-dimension error grows to about 1.92 by horizon 100 — roughly fourteen times larger. So feedback still matters. It determines how far the predicted trajectory eventually lands from the true future. But it does not explain why each local step is too short. The local under-shoot is present before the feedback loop begins; open-loop rollout compounds an already under-amplified map.
+The error magnitudes confirm the same split from a different angle. Under teacher forcing, the per-dimension one-step error stays relatively small and nearly flat, growing only from about 0.06 to 0.14 across the rollout. <a id="ref-tf_one_step_error_by_horizon"></a><a class="jumpref" href="#fig-tf_one_step_error_by_horizon">(see figure)</a> In open loop, the per-dimension error grows to about 1.92 by horizon 100 — roughly fourteen times larger. So feedback still matters. It determines how far the predicted trajectory eventually lands from the true future. But it does not explain why each local step is too short. The local under-shoot is present before the feedback loop begins; open-loop rollout compounds an already under-amplified map.
 
 This distinction matters for diagnosis. If the failure came only from open-loop feedback, then manifold correction, shorter rollouts, or more frequent re-encoding could address it. But the teacher-forced result shows that the local transition itself is already damped: even on real encoded inputs, the predictor systematically predicts less latent motion than the world actually contains.
 
-This pattern is consistent with a conditional-mean smoothing interpretation. Under an MSE objective, the population-optimal deterministic predictor is the conditional mean of the possible next latents: the single point that minimizes squared error across plausible futures. If multiple next latents are compatible with the same encoded context and action, their average can have a shorter displacement than a typical realized step, because components in different directions cancel. More precisely, the average squared length of a true step decomposes exactly into the squared length of the conditional-mean step plus the variance of the possible futures around that mean. So the wider the future distribution, the smaller the share of that budget the mean step can keep — a deterministic mean prediction gives up motion in proportion to how much the futures disagree.
+This pattern is consistent with a conditional-mean smoothing interpretation. Under an MSE objective, the population-optimal deterministic predictor is the conditional mean of the possible next latents: the single point that minimizes squared error across plausible futures. If multiple next latents are compatible with the same encoded context and action, their average can have a shorter displacement than a typical realized step, because components in different directions cancel. More precisely, the average squared length of a true step decomposes exactly into the squared length of the conditional-mean step plus the variance of the possible futures around that mean. So the wider the future distribution, the smaller the share of that budget the mean step can keep — a deterministic mean prediction gives up motion in proportion to how much the futures diverge in directions.
 
 But this is where the certainty should stop. The teacher-forced control proves that the velocity under-shoot lives in the one-step map rather than being created by open-loop feedback. It does not, by itself, prove why the one-step map is under-amplified. Conditional-mean smoothing is the best current interpretation of the geometry, but several causes could make the effective future distribution wide or make the learned map contractive: missing dynamical state in the latent, weak action conditioning, contact ambiguity, finite predictor capacity, optimization bias, or genuine stochasticity in the transition. The velocity ratio alone cannot distinguish these. I return to these alternatives in the implications and limitations sections.
 
@@ -197,7 +195,7 @@ The along-track / perpendicular decomposition tests this.
 
 For each real transition, I take the true latent step as the reference direction: where the encoded trajectory actually moved from the current frame to the next frame. Then I decompose the predicted step into two parts. The **along-track** component is the part of the predicted step that moves forward in the true direction. The **perpendicular** component is the part that moves sideways, orthogonal to the true direction.
 
-The magnitude numbers reveal this. At a representative mid-rollout horizon, the true step has length about 5.7 and the teacher-forced predicted step has length about 1.85. If the predicted step were perfectly aimed but too short, the smallest possible error would be the difference between those lengths: about $5.7−1.85≈3.8$ But the measured one-step error is about 4.3, larger than this pure-lag lower bound. A short but correctly aimed arrow cannot produce an error larger than the distance it failed to cover along the true direction. The extra error means the predicted arrow must be tilted away from the true direction. Working the same numbers through into the two directions: of the true step's length, only about a quarter shows up as forward progress along the true direction, and a comparable amount goes sideways. So the predictor recovers roughly one-quarter of the real motion in the right direction and spends a similar share drifting off it.
+The magnitude numbers reveal this. At a representative mid-rollout horizon, the true step has length about 5.7 and the teacher-forced predicted step has length about 1.85. If the predicted step were perfectly aimed but too short, the smallest possible error would be the difference between those lengths: about $$5.7 - 1.85 \approx 3.8$$ But the measured one-step error is about 4.3, larger than this pure-lag lower bound. A short but correctly aimed arrow cannot produce an error larger than the distance it failed to cover along the true direction. The extra error means the predicted arrow must be tilted away from the true direction. Working the same numbers through into the two directions: of the true step's length, only about a quarter shows up as forward progress along the true direction, and a comparable amount goes sideways. So the predictor recovers roughly one-quarter of the real motion in the right direction and spends a similar share drifting off it.
 
 {% include figure.liquid path="assets/img/lewm/along_track_perpendicular_decomposition.png" class="img-fluid rounded z-depth-1" caption="Figure: Teacher-forced one-step decomposition. At a representative horizon, the true latent step is the motion the predictor should reproduce. The teacher-forced predicted step is much shorter and also tilted away from the true direction. Decomposing it into an along-track component and a perpendicular component shows that the predictor makes only limited forward progress while spending a comparable amount of motion sideways." %}
 
@@ -214,23 +212,26 @@ With under-amplification confirmed as a one-step property, and the step shown to
 
 At the start, the probe curves for the three physical quantities looked like three separate failures. Block location drifted gradually. Agent location failed early and then plateaued. Block angle survived briefly and then broke sharply. Taken in isolation, those curves invite three different explanations: compounding position error, agent-state collapse, and fragile angle representation.
 
-The geometric diagnostics point to a cleaner interpretation. The predicted latents are not collapsing in the usual sense: their norms stay inside the encoder reference shell. They are also not dominated by one global bias direction. But they do lose target-specific alignment: their MSE to the true future latent rises toward the scale of unrelated latents. They drift farther from the empirical encoded manifold than true futures, move far too slowly, and follow trajectories that are too straight. The teacher-forced control then localizes the source of the slowdown: even when the predictor is fed real encoded context latents at every horizon, its one-step velocity remains only about one-third of the true latent velocity. The along-track / perpendicular decomposition sharpens this further: the predicted step is not merely a shorter version of the true step; it makes too little forward progress and also drifts sideways.
+The geometric diagnostics point to a cleaner interpretation. The predicted latents are not collapsing in the usual sense: their norms stay inside the encoder reference shell, and they are not dominated by one global bias direction. But they lose target-specific alignment — their MSE to the true future latent rises toward the scale of unrelated latents — while drifting farther from the empirical manifold than true futures, moving far too slowly, and following trajectories that are too straight. The teacher-forced control localizes the source: even fed real encoded context at every horizon, the predictor's one-step velocity is only about one-third of the true velocity. The along-track / perpendicular decomposition sharpens it further — the predicted step is not merely shorter than the true step; it makes too little forward progress and also drifts sideways.
 
 So the simplest synthesis is not three independent mechanisms. It is one local failure mode with three physical signatures.
 
-The local failure mode is a smoothed, under-amplified transition map. Given a real encoded state and action, the predictor produces a next latent that remains distributionally plausible but moves too little and not quite in the right direction. Repeated over rollout, this gives exactly the geometry observed earlier: stable-looking latents that travel along a slow, over-straight, wrong path. This is consistent with a conditional-mean smoothing interpretation: a deterministic MSE-trained predictor is pulled toward an average next latent when the future is not fully resolved by the encoded context and action. It remains an interpretation, not a settled cause: the current experiments do not prove which source of uncertainty dominates — missing dynamical state, weak action conditioning, contact ambiguity, limited predictor capacity, or genuine transition stochasticity — but they do show that the resulting under-amplification is already present in the one-step map, before open-loop feedback begins.
-
-This mechanism explains why the three physical variables fail differently.
+That failure mode is a smoothed, under-amplified transition map: given a real state and action, the predictor's next latent is distributionally plausible but moves too little and slightly off-direction — and repeating it produces the rollout geometry above. This is consistent with conditional-mean smoothing, though the underlying cause remains open. What makes it a useful synthesis is that this single local defect, filtered through three physical quantities with different sensitivities, accounts for all three degradation curves:
 
 **Block location degrades gradually because coarse object position is comparatively robust.** The block is a large, visually salient object, and its position changes smoothly relative to the rollout horizon. Even if each predicted latent step is too short, some coarse block-position information can survive for many steps. The result is not immediate failure, but smooth drift: the predicted block remains recognizable for a while, then slowly separates from the true future. This matches the block-location curve: low early error, steady degradation, and a late crossing of the constant-mean baseline.
 
-**Agent location fails early because it is highly action-dependent.** The agent or cursor position is the part of the state most directly tied to local action updates. If the predictor under-amplifies motion, the cursor’s predicted position quickly becomes stale, averaged, or default-like. Unlike the block, whose coarse position can remain plausible under slow drift, the agent must move accurately at each step for its location to stay recoverable. Once those local updates are too small, the probe rapidly loses useful agent-position information. That explains the early jump and plateau: after a few predictor steps, the latent no longer contains an accurately updated cursor state, so additional horizon does not change the error shape much. Because this is the tier where the action matters most, it is also the cleanest place to probe further — a rollout driven by null or random actions would show whether the predictor is also under-using the action it is given, on top of the smoothing. I take that up in the next section.
+**Agent location fails early because it is highly action-dependent.** The agent position is the part of the state most directly tied to local action updates. If the predictor under-amplifies motion, the agent’s predicted position quickly becomes stale, averaged, or default-like. Unlike the block, whose coarse position can remain plausible under slow drift, the agent must move accurately at each step for its location to stay recoverable. Once those local updates are too small, the probe rapidly loses useful agent-position information. That explains the early jump and plateau: after a few predictor steps, the latent no longer contains an accurately updated agent state, so additional horizon does not change the error shape much. Because this is the tier where the action matters most, it is also the cleanest place to probe further — a rollout driven by null or random actions would show whether the predictor is also under-using the action it is given, on top of the smoothing. I take that up in the next section.
 
 **Block angle breaks sharply because rotational state is fragile under smoothed dynamics.** Angle is not just another coordinate. It depends on contact geometry, local torque, and small changes in how the agent pushes the block. A smoothed latent transition can preserve rough object position while failing to capture the rotational consequence of contact. This also fits the probe sanity check: block angle is harder to recover than block location even from real encoded latents, suggesting that rotational state is less robustly represented or less easily recoverable than translational block position. Under rollout, a few under-amplified or slightly misdirected steps may still leave angle below the failure threshold, but once the rotational state slips, the error rises sharply. That gives the observed cliff-like pattern around the mid rollout.
 
-[Insert Figure: `rollout_horizon35_best12_mlp_physical_reconstruction.png`]
+The following figure shows the horizon-35 physical reconstructions from MLP-probe-decoded predicted latents, from the best 12 of the 1000 test episodes. Even in these favorable examples, the block pose can remain visually plausible while the agent is visibly displaced. This makes the three-tier pattern concrete: coarse block state survives longer, agent state is already unreliable.
 
-*Figure: Horizon-35 physical reconstructions from MLP-probe-decoded predicted latents, from the best 12 of the 1000 test episodes. Even in these favorable examples, the block pose can remain visually plausible while the agent is visibly displaced. This makes the three-tier pattern concrete: coarse block state survives longer, agent state is already unreliable.*
+<details>
+<summary>Show figure</summary>
+
+{% include figure.liquid path="assets/img/lewm/horizon35_physical_recons.png" class="img-fluid rounded z-depth-1" %}
+
+</details>
 
 This figure is useful because it shows why qualitative rollout inspection can be misleading. A decoded future frame can look plausible if the block remains roughly in the right place. But planning depends on the full task state, not only whether the image looks reasonable. At horizon 35, the probe curves already show a split: block location is still relatively accurate, agent location is near or beyond the constant-mean baseline, and block angle is close to failure. The reconstruction makes that split visible. The model has not lost all structure, but it has lost the right structure for control.
 
@@ -246,7 +247,7 @@ The conclusion is therefore narrower, but stronger, than simply saying “LeWM r
 
 This study is a mechanistic characterization of one LeWM Push-T checkpoint, not a final verdict on latent world models. The main finding is clear: in long-horizon rollout, LeWM’s predicted latents remain globally well-formed but become slow, overly straight, partly misdirected, and increasingly detached from the correct future. The limitations are about how far that finding can be generalized, and what causal explanation it supports.
 
-The most important limitation is that the root cause of the one-step under-amplification is not yet established. The teacher-forced control shows that the velocity under-shoot is intrinsic to the learned one-step map, not merely caused by open-loop feedback. But it does not tell us why the one-step map is under-amplified. Several explanations remain plausible: the environment may be genuinely stochastic; the latent may discard dynamical state needed for prediction; the predictor may under-use the action input; contact dynamics may make the next state ambiguous; the predictor may be too small or insufficiently optimized.
+The most important limitation is that the root cause of the one-step under-amplification is not yet established. The teacher-forced control shows that the velocity under-shoot is intrinsic to the learned one-step map, not merely caused by open-loop feedback. But it does not tell us why the one-step map is under-amplified. Several explanations remain plausible: the environment may be genuinely stochastic; the latent may discard dynamical state needed for prediction; the predictor may under-use the action input; contact dynamics may make the next state ambiguous; the predictor may be too small or insufficiently optimized.
 
 The second limitation is scope. This blog studies a single released checkpoint on a single environment, Push-T. Push-T is useful because it has interpretable physical variables and contact-rich manipulation, but it is still one task. The observed failure could be specific to Push-T, to LeWM’s predictor, or to the released checkpoint. A stronger claim would require repeating the same diagnostic suite across multiple environments — for example grasping, pushing, and deformable-object tasks — and across multiple latent world model families.
 
@@ -258,7 +259,7 @@ Two narrower caveats round this out. The along-track / perpendicular split comes
 
 ### Future work
 
-First, test action sensitivity with true-action, null-action, and random-action rollouts. If the predicted velocity and physical-state degradation barely change when the action sequence is removed or randomized, then the predictor is not using action strongly enough. That would explain why agent location fails early: cursor position is highly action-dependent, so a weakly action-conditioned predictor would average over possible cursor futures. If true actions produce meaningfully better velocity and physical preservation than null or random actions, then the failure is not simply action neglect.
+First, test action sensitivity with true-action, null-action, and random-action rollouts. If the predicted velocity and physical-state degradation barely change when the action sequence is removed or randomized, then the predictor is not using action strongly enough. That would explain why agent location fails early: agent position is highly action-dependent, so a weakly action-conditioned predictor would average over possible agent futures. If true actions produce meaningfully better velocity and physical preservation than null or random actions, then the failure is not simply action neglect.
 
 Second, probe the latent for velocity. The Table 1 probes show position is recoverable from a real latent; they do not show whether velocity is. But predicting forward needs motion, not just position — knowing where the block is tells you nothing about where it is going. If velocity turns out to be poorly recoverable, then the predictor literally cannot see which way things are moving, and the wide distribution of futures it averages over is an information problem rather than a world-randomness one. This speaks straight to the central question of whether the latent carries persistent, action-relevant state.
 
@@ -270,9 +271,9 @@ Fourth, repeat the diagnostic suite across more models and environments. The sam
 
 The field is already building fixes for this degradation, from several directions. V-JEPA 2's action-conditioned predictor adds a rollout loss on top of teacher forcing, training the model on its own multi-step predictions rather than only single steps — directly targeting the train/test mismatch that LeWM's one-step MSE leaves untouched. Hierarchical planning with latent world models reduces the number of error-prone steps by reasoning at a coarser temporal scale. LiveWorld, in the video-generation setting, adds explicit persistent-state machinery so that entities are not frozen when they leave view. These differ in what they touch — the training signal, the planning hierarchy, the architecture — but they share a starting assumption that the rollout degrades. What has been missing is a mechanical account of *how* it degrades inside a latent world model. That account is what this work aims to add, and it is what would tell you which of these fixes is addressing the actual cause rather than the symptom.
 
-### **Next Step**
+### Next Step
 
-The broader next step is therefore not just to ask whether rollouts look plausible. It is to ask whether a world model preserves the state needed for counterfactual reasoning, intervention planning, and robust long-horizon foresight. This blog shows one concrete failure mode: stable-looking latents can lose the physical future they are supposed to represent. The next experiments should determine why the distribution of futures the predictor averages over is so wide — whether it reflects weak action conditioning, missing dynamical state, limited predictor capacity, or genuine uncertainty in the task itself.
+The broader next step is therefore not just to ask whether rollouts look plausible. It is to ask whether a world model preserves the state needed for counterfactual reasoning, intervention planning, and robust long-horizon foresight. This blog shows one concrete failure mode: stable-looking latents can lose the physical future they are supposed to represent. The next experiments should determine why the distribution of futures the predictor averages over is so wide — whether it reflects weak action conditioning, missing dynamical state, limited predictor capacity, or genuine uncertainty in the task itself.
 
 ## Reproducibility and references
 
@@ -282,9 +283,10 @@ The physical-state probes follow the LeWM protocol: linear and MLP probes traine
 
 Every numerical claim in this post is drawn from the JSON report files listed below, not read from plots. The figures shown inline are a selective subset; the full diagnostic set and reports are in the repository.
 
-The main figures above are intentionally selective for readability. This appendix shows the full diagnostic set. The underlying JSON/Markdown reports — the source of every numerical claim — are in the accompanying repository.
+This appendix shows the full diagnostic set, grouped into collapsible sections — the page stays short by default, so expand only the ones you want. The underlying JSON/Markdown reports — the source of every numerical claim — are in the accompanying repository.
 
-### Probe diagnostics
+<details markdown="1" open>
+<summary>Probe diagnostics</summary>
 
 {% include figure.liquid path="assets/img/lewm/probe_normalized_mse_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Probe normalized MSE vs rollout horizon. Frozen linear and MLP probes for agent location, block location, and block angle applied to predicted rollout latents; the reference line at 1.0 is the constant-mean baseline. (Also shown in the main text.)" %}
 
@@ -294,31 +296,73 @@ The main figures above are intentionally selective for readability. This appendi
 
 Reports: `rollout_probe_report_split_seed42_episodes1000_horizon100_img224.md` / `.json`.
 
-### Horizon-35 physical visualizations
+</details>
+
+<details markdown="1">
+<summary>Horizon-35 physical visualizations</summary>
 
 {% include figure.liquid path="assets/img/lewm/horizon35_probe_location_scatters.png" class="img-fluid rounded z-depth-1" caption="Probe-predicted (×) vs true (●) agent and block locations at raw horizon 35, 20 sampled episodes. Predicted positions are scattered well away from their true counterparts." %}
 
-{% include figure.liquid path="assets/img/lewm/horizon35_physical_reconstruction.png" class="img-fluid rounded z-depth-1" caption="Best 12 predicted-latent physical reconstructions at raw horizon 35. Left of each pair: the real simulator render; right: the state decoded from probes on the predicted latent. Block pose can remain roughly plausible while the agent is visibly displaced." %}
+{% include figure.liquid path="assets/img/lewm/horizon35_physical_recons.png" class="img-fluid rounded z-depth-1" caption="Best 12 predicted-latent physical reconstructions at raw horizon 35. Left of each pair: the real simulator render; right: the state decoded from probes on the predicted latent. Block pose can remain roughly plausible while the agent is visibly displaced." %}
 
-### Latent target-alignment diagnostics
+</details>
+
+<details markdown="1">
+<summary>Latent target-alignment diagnostics</summary>
+
+<div id="fig-latent_per_dim_mse_by_horizon">
 
 {% include figure.liquid path="assets/img/lewm/latent_per_dim_mse_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Per-dimension squared distance between predicted and true encoded latents vs horizon. Grows from ~0.06 at horizon 15 to ~1.92 by horizon 100, saturating near the ~2.0 level expected for two independent latents." %}
+
+<a class="jumpref" href="#ref-latent_per_dim_mse_by_horizon">&#8617;&#xfe0e; back to text</a>
+
+</div>
 
 {% include figure.liquid path="assets/img/lewm/latent_sq_l2_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Total mean squared L2 error between predicted latent and encoded ground truth vs horizon (the same quantity, summed over dimensions rather than averaged), saturating near 365." %}
 
 Report: `..._latent_mse_report.json`.
 
-### Empirical-manifold diagnostics
+</details>
+
+<details markdown="1">
+<summary>Empirical-manifold diagnostics</summary>
+
+<div id="fig-manifold_min_per_dim_mse">
 
 {% include figure.liquid path="assets/img/lewm/manifold_min_per_dim_mse.png" class="img-fluid rounded z-depth-1" caption="Per-dimension nearest-neighbor distance to the empirical train/val encoded-latent set. Predicted latents (blue) stay several times farther from the manifold than true future latents (orange)." %}
 
+<a class="jumpref" href="#ref-manifold_min_per_dim_mse">&#8617;&#xfe0e; back to text</a>
+
+</div>
+
+<div id="fig-manifold_min_sq_l2">
+
 {% include figure.liquid path="assets/img/lewm/manifold_min_sq_l2.png" class="img-fluid rounded z-depth-1" caption="Nearest-neighbor squared-L2 distance to the encoded manifold for predicted vs true future latents — the absolute-scale version of the diagnostic above." %}
+
+<a class="jumpref" href="#ref-manifold_min_sq_l2">&#8617;&#xfe0e; back to text</a>
+
+</div>
+
+<div id="fig-manifold_drift_ratio">
 
 {% include figure.liquid path="assets/img/lewm/manifold_drift_ratio.png" class="img-fluid rounded z-depth-1" caption="Ratio of predicted-to-true nearest-manifold distance vs horizon. Peaks near 11× around horizon 25 and falls to about 4.5× by horizon 100; the dashed line at 1.0 marks parity." %}
 
-### Norm diagnostics
+<a class="jumpref" href="#ref-manifold_drift_ratio">&#8617;&#xfe0e; back to text</a>
+
+</div>
+
+</details>
+
+<details markdown="1">
+<summary>Norm diagnostics</summary>
+
+<div id="fig-norm_pred_vs_true_by_horizon">
 
 {% include figure.liquid path="assets/img/lewm/norm_pred_vs_true_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Predicted vs true future latent L2 norm vs horizon. Both stay within a narrow band (~13.6–14.4); the predicted norm tracks the encoder shell rather than collapsing or exploding." %}
+
+<a class="jumpref" href="#ref-norm_pred_vs_true_by_horizon">&#8617;&#xfe0e; back to text</a>
+
+</div>
 
 {% include figure.liquid path="assets/img/lewm/norm_pred_reference_band.png" class="img-fluid rounded z-depth-1" caption="Predicted and true future norms against the train/val reference norm band (mean ± std). The predicted norm stays well inside the reference band throughout rollout." %}
 
@@ -328,33 +372,74 @@ Report: `..._latent_mse_report.json`.
 
 Report: `..._norm_trajectory_report.json`.
 
-### Velocity and straightness diagnostics
+</details>
+
+<details markdown="1">
+<summary>Velocity and straightness diagnostics</summary>
 
 {% include figure.liquid path="assets/img/lewm/latent_velocity_norm_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Step-to-step velocity norm of predicted vs true encoded latents by horizon. The true latent moves several times faster than the predicted latent at every horizon. (Also shown in the main text.)" %}
 
+<div id="fig-straightness_pred_vs_true_by_horizon">
+
 {% include figure.liquid path="assets/img/lewm/straightness_pred_vs_true_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Temporal straightness (mean cosine between consecutive velocity vectors) vs horizon. The predicted trajectory is straighter (~0.70) than the true encoded trajectory (~0.53) at every horizon." %}
+
+<a class="jumpref" href="#ref-straightness_pred_vs_true_by_horizon">&#8617;&#xfe0e; back to text</a>
+
+</div>
+
+<div id="fig-straightness_cosine_histogram">
 
 {% include figure.liquid path="assets/img/lewm/straightness_cosine_histogram.png" class="img-fluid rounded z-depth-1" caption="Distribution of cosines between consecutive velocity vectors. Predicted velocities pile up near 1.0 (over-straight); true velocities spread more broadly around 0.5–0.7." %}
 
+<a class="jumpref" href="#ref-straightness_cosine_histogram">&#8617;&#xfe0e; back to text</a>
+
+</div>
+
 Report: `..._temporal_straightness_report.json`.
 
-### Systematic-bias diagnostics
+</details>
+
+<details markdown="1">
+<summary>Systematic-bias diagnostics</summary>
 
 {% include figure.liquid path="assets/img/lewm/bias_norm_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Norm of the systematic (episode-averaged) error vector vs horizon. It peaks around 3.2 near horizon 75–80, then declines." %}
 
+<div id="fig-bias_vs_total_per_dim_error">
+
 {% include figure.liquid path="assets/img/lewm/bias_vs_total_per_dim_error.png" class="img-fluid rounded z-depth-1" caption="Systematic-bias per-dimension energy vs total per-dimension MSE. The shared bias component is tiny relative to total error at every horizon." %}
+
+<a class="jumpref" href="#ref-bias_vs_total_per_dim_error">&#8617;&#xfe0e; back to text</a>
+
+</div>
+
+<div id="fig-bias_fraction_by_horizon">
 
 {% include figure.liquid path="assets/img/lewm/bias_fraction_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Fraction of total error energy explained by the shared systematic bias — roughly 2–5% throughout. Most error is episode-specific, not a single shared drift direction." %}
 
+<a class="jumpref" href="#ref-bias_fraction_by_horizon">&#8617;&#xfe0e; back to text</a>
+
+</div>
+
 Report: `..._systematic_bias_report.json`.
 
-### Teacher-forced controls
+</details>
+
+<details markdown="1">
+<summary>Teacher-forced controls</summary>
 
 {% include figure.liquid path="assets/img/lewm/teacher_forced_vs_open_loop_velocity_ratio.png" class="img-fluid rounded z-depth-1" caption="Predicted/true velocity ratio under teacher forcing (~0.33) vs open-loop rollout (~0.16) by horizon. (Also shown in the main text.)" %}
 
+<div id="fig-tf_one_step_error_by_horizon">
+
 {% include figure.liquid path="assets/img/lewm/tf_one_step_error_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Teacher-forced one-step per-dimension error vs open-loop per-dimension error. Teacher-forced stays small and flat (~0.1); open-loop grows to ~1.9 — feedback compounds the local error." %}
 
+<a class="jumpref" href="#ref-tf_one_step_error_by_horizon">&#8617;&#xfe0e; back to text</a>
+
+</div>
+
 {% include figure.liquid path="assets/img/lewm/tf_velocity_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Mean latent velocity for true (≈5–6), teacher-forced predicted (≈1.85), and open-loop predicted (≈1.0) trajectories. Under-amplification is already present under teacher forcing, before any open-loop feedback." %}
+
+</details>
 
 Report: `teacher_forced_velocity_report_split_seed42_episodes1000_horizon100_img224.json` / `.md`.
 
@@ -366,3 +451,77 @@ Code, split configuration, probe and rollout scripts, raw JSON reports, and plot
 2. V-JEPA 2 / V-JEPA 2-AC — *Self-Supervised Video Models Enable Understanding, Prediction and Planning.*
 3. *Hierarchical Planning with Latent World Models.*
 4. LiveWorld — *Simulating Out-of-Sight Dynamics in Generative Video World Models.*
+
+<script>
+(function () {
+  function flash(el) {
+    el.classList.remove('flash-highlight');
+    void el.offsetWidth;                 // force reflow so the animation restarts
+    el.classList.add('flash-highlight');
+    setTimeout(function () { el.classList.remove('flash-highlight'); }, 2000);
+  }
+  // Smooth-scroll the target to center, then flash. Re-centering corrections are
+  // issued ONLY after the page has stopped scrolling (never per-frame), so we
+  // never stack competing smooth-scroll animations — that was what caused lag.
+  function centerThenFlash(target) {
+    var lastY = null, still = 0, corrections = 0, tries = 0;
+    function step() {
+      tries++;
+      var y = window.pageYOffset;
+      still = (lastY !== null && Math.abs(y - lastY) < 1.5) ? still + 1 : 0;
+      lastY = y;
+      if (still >= 4 || tries > 600) {          // scrolling has stopped (or timeout)
+        var vh = window.innerHeight || document.documentElement.clientHeight;
+        var r = target.getBoundingClientRect();
+        var off = (r.top + r.height / 2) - vh / 2;
+        // lazy-loaded images may have shifted the target; correct once, then
+        // wait for that scroll to settle before checking again
+        if (Math.abs(off) > 24 && corrections < 5 && tries <= 600) {
+          corrections++; still = 0; lastY = null;
+          window.scrollBy({ top: off, behavior: 'smooth' });
+        } else {
+          flash(target);
+          return;
+        }
+      }
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  document.addEventListener('click', function (e) {
+    var link = e.target.closest && e.target.closest('a.jumpref');
+    if (!link) return;
+    e.preventDefault();
+    var id = decodeURIComponent(link.getAttribute('href').slice(1));
+    var target = document.getElementById(id);
+    if (!target) return;
+    for (var el = target; el; el = el.parentElement) {
+      if (el.tagName === 'DETAILS') el.open = true;   // open any collapsed <details>
+    }
+    requestAnimationFrame(function () {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      centerThenFlash(target);
+    });
+  });
+})();
+</script>
+<style>
+.flash-highlight {
+  border-radius: 8px;
+  animation: flash-fade 2s ease-out;
+}
+@keyframes flash-fade {
+  0%, 15% {
+    outline: 4px solid rgba(255, 179, 0, 1);
+    outline-offset: 4px;
+    box-shadow: 0 0 0 5px rgba(255, 179, 0, 0.95), 0 0 36px 16px rgba(255, 179, 0, 0.85);
+    background-color: rgba(255, 179, 0, 0.18);
+  }
+  100% {
+    outline: 4px solid rgba(255, 179, 0, 0);
+    outline-offset: 4px;
+    box-shadow: 0 0 0 5px rgba(255, 179, 0, 0), 0 0 36px 16px rgba(255, 179, 0, 0);
+    background-color: rgba(255, 179, 0, 0);
+  }
+}
+</style>
