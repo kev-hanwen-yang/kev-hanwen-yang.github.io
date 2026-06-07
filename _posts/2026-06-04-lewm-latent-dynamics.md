@@ -294,7 +294,7 @@ This appendix shows the full diagnostic set, grouped into collapsible sections �
 
 {% include figure.liquid path="assets/img/lewm/probe_pearson_r_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Probe Pearson r between predicted and true targets vs horizon. Correlation decays with horizon for all six probes but does not fall to zero — at horizon 100, MLP block location still shows r ≈ 0.35 — so predicted latents retain coarse state information." %}
 
-Reports: `rollout_probe_report_split_seed42_episodes1000_horizon100_img224.md` / `.json`.
+Reports: [`rollout_probe_report_split_seed42_episodes1000_horizon100_img224.md`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/reports/rollout_probe_report_split_seed42_episodes1000_horizon100_img224.md) / [`.json`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/reports/rollout_probe_report_split_seed42_episodes1000_horizon100_img224.json). Horizon-zero probe sanity check behind Table 1: [`probe_test_report_seed42_img224.md`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/reports/probe_test_report_seed42_img224.md) / [`.json`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/reports/probe_test_report_seed42_img224.json). Multi-seed probe robustness: [`probe_test_report_split_seed42_probe_seeds0_1_2_3_4_img224.md`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/reports/probe_test_report_split_seed42_probe_seeds0_1_2_3_4_img224.md) / [`.json`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/reports/probe_test_report_split_seed42_probe_seeds0_1_2_3_4_img224.json) / [`..._seed_summary.md`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/reports/probe_test_report_split_seed42_probe_seeds0_1_2_3_4_img224_seed_summary.md).
 
 </details>
 
@@ -320,7 +320,7 @@ Reports: `rollout_probe_report_split_seed42_episodes1000_horizon100_img224.md` /
 
 {% include figure.liquid path="assets/img/lewm/latent_sq_l2_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Total mean squared L2 error between predicted latent and encoded ground truth vs horizon (the same quantity, summed over dimensions rather than averaged), saturating near 365." %}
 
-Report: `..._latent_mse_report.json`.
+Report: [`..._latent_mse_report.json`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/latent_diagnostics/mse_to_encoded_ground_truth/pusht_expert_train_pusht_lewm_split_seed42_episodes1000_horizon100_img224_latent_mse_report.json).
 
 </details>
 
@@ -351,6 +351,8 @@ Report: `..._latent_mse_report.json`.
 
 </div>
 
+Report: [`..._reftrain_val_manifold_distance_report.json`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/latent_diagnostics/min_distance_to_manifold/pusht_expert_train_pusht_lewm_split_seed42_episodes1000_horizon100_img224_reftrain_val_manifold_distance_report.json).
+
 </details>
 
 <details markdown="1">
@@ -370,7 +372,7 @@ Report: `..._latent_mse_report.json`.
 
 {% include figure.liquid path="assets/img/lewm/norm_zscore_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Latent-norm z-score against the train/val reference vs horizon. The predicted norm z-score stays between about −0.33 and +0.49, i.e. indistinguishable from a normal encoder output by magnitude." %}
 
-Report: `..._norm_trajectory_report.json`.
+Report: [`..._reftrain_val_norm_trajectory_report.json`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/latent_diagnostics/norm_trajectory/pusht_expert_train_pusht_lewm_split_seed42_episodes1000_horizon100_img224_reftrain_val_norm_trajectory_report.json).
 
 </details>
 
@@ -395,7 +397,7 @@ Report: `..._norm_trajectory_report.json`.
 
 </div>
 
-Report: `..._temporal_straightness_report.json`.
+Report: [`..._temporal_straightness_report.json`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/latent_diagnostics/temporal_straightness/pusht_expert_train_pusht_lewm_split_seed42_episodes1000_horizon100_img224_temporal_straightness_report.json).
 
 </details>
 
@@ -420,7 +422,7 @@ Report: `..._temporal_straightness_report.json`.
 
 </div>
 
-Report: `..._systematic_bias_report.json`.
+Report: [`..._systematic_bias_report.json`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/latent_diagnostics/systematic_bias_direction/pusht_expert_train_pusht_lewm_split_seed42_episodes1000_horizon100_img224_systematic_bias_report.json).
 
 </details>
 
@@ -441,9 +443,9 @@ Report: `..._systematic_bias_report.json`.
 
 </details>
 
-Report: `teacher_forced_velocity_report_split_seed42_episodes1000_horizon100_img224.json` / `.md`.
+Report: [`teacher_forced_velocity_report_split_seed42_episodes1000_horizon100_img224.json`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/latent_diagnostics/teacher_forced_velocity/teacher_forced_velocity_report_split_seed42_episodes1000_horizon100_img224.json) / [`.md`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/latent_diagnostics/teacher_forced_velocity/teacher_forced_velocity_report_split_seed42_episodes1000_horizon100_img224.md).
 
-Code, split configuration, probe and rollout scripts, raw JSON reports, and plotting scripts are in the accompanying GitHub repository [link].
+Code, split configuration, probe and rollout scripts, raw JSON reports, and plotting scripts are in the accompanying [GitHub repository](https://github.com/kev-hanwen-yang/le-wm); the full diagnostic report set lives under [`diagnostic_results/`](https://github.com/kev-hanwen-yang/le-wm/tree/main/diagnostic_results).
 
 **References**
 
