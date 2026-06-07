@@ -441,9 +441,10 @@ Report: [`..._systematic_bias_report.json`](https://github.com/kev-hanwen-yang/l
 
 {% include figure.liquid path="assets/img/lewm/tf_velocity_by_horizon.png" class="img-fluid rounded z-depth-1" caption="Mean latent velocity for true (≈5–6), teacher-forced predicted (≈1.85), and open-loop predicted (≈1.0) trajectories. Under-amplification is already present under teacher forcing, before any open-loop feedback." %}
 
-</details>
-
 Report: [`teacher_forced_velocity_report_split_seed42_episodes1000_horizon100_img224.json`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/latent_diagnostics/teacher_forced_velocity/teacher_forced_velocity_report_split_seed42_episodes1000_horizon100_img224.json) / [`.md`](https://github.com/kev-hanwen-yang/le-wm/blob/main/diagnostic_results/latent_diagnostics/teacher_forced_velocity/teacher_forced_velocity_report_split_seed42_episodes1000_horizon100_img224.md).
+
+
+</details>
 
 Code, split configuration, probe and rollout scripts, raw JSON reports, and plotting scripts are in the accompanying [GitHub repository](https://github.com/kev-hanwen-yang/le-wm); the full diagnostic report set lives under [`diagnostic_results/`](https://github.com/kev-hanwen-yang/le-wm/tree/main/diagnostic_results).
 
