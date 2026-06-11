@@ -2,7 +2,7 @@
 layout: about
 title: about
 permalink: /
-subtitle: Independent ML researcher — self-supervised video learning, latent world models, embodied intelligence
+subtitle:
 
 profile:
   align: right
@@ -24,7 +24,34 @@ latest_posts:
   scrollable: true # adds a vertical scroll bar if there are more than 3 new posts items
   limit: 3 # leave blank to include all the blog posts
 ---
+I'm an independent ML researcher working on self-supervised representation
+learning and latent world models — JEPA-style architectures that predict in
+representation space — and how they can support embodied agents that build an
+internal model of the world from observation and action. Currently applying for graduate
+research positions (2027 commencement).
 
-I'm an independent machine learning researcher based in Melbourne, Australia. My work focuses on self-supervised learning from video and latent predictive world models — JEPA-style architectures that learn to predict in representation space. I'm interested in how these models can support embodied intelligence: agents that build a useful internal model of the world from observation alone.
+**Recent work: [Diagnosing LeWM's Long-Horizon Rollouts: Stable Latents, Wrong Futures](https://kev-hanwen-yang.github.io/blog/2026/lewm-latent-dynamics/)**
 
-Right now I'm reproducing and analyzing LeWM, a compact latent world model. I'm working through its training objective — including the SIGReg regularizer and action-conditioned latent prediction — and running a diagnostic study of how its predicted latent trajectories behave over long open-loop rollouts. I write the experiments and findings up as technical notes [on this site]({{ '/blog/' | relative_url }}).
+I reproduced LeWM, a compact JEPA-style latent world model (SIGReg-regularised,
+action-conditioned latent prediction), and asked whether its stable-looking
+predicted latents actually preserve action-relevant physical state over long
+open-loop rollouts. Using probe-based state recovery, latent-space geometric
+diagnostics, and a teacher-forced control, I traced the dominant failure to
+under-amplification already present in the one-step transition map rather than
+compounding rollout feedback — a result that revised my initial hypothesis.
+
+→ Code and reproduction notes: [kev-hanwen-yang/le-wm](https://github.com/kev-hanwen-yang/le-wm)
+
+**Also:** [RVSS Need4Speed](https://github.com/kev-hanwen-yang/RVSS-competition) —
+CNN-based imitation learning for an autonomous driving competition: data
+collection, training, on-robot deployment and debugging under real hardware
+constraints.
+
+Background: software engineer building production data infrastructure at scale,
+before moving to ML research full-time.
+
+Especially interested in self-supervised video representations, action-conditioned
+latent dynamics, and world models that support long-horizon prediction and
+planning in embodied agents.
+
+Reach me: kevin.yang0047@gmail.com

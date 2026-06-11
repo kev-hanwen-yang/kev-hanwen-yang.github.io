@@ -1,9 +1,10 @@
 ---
 layout: page
-title: Reproducing LeWM
-description: A from-scratch reproduction and diagnostic study of LeWM, a compact latent world model — its SIGReg objective, action-conditioned latent prediction, and open-loop rollout behavior.
+title: "Diagnosing LeWM’s Long-Horizon Rollouts: Stable Latents, Wrong Futures"
+description: "Independent research project. Reproduced the published LeWM Push-T probing results, then analysed long-horizon open-loop latent rollouts using probe-based state recovery, latent-space geometric diagnostics, and teacher-forced controls."
 img:
 importance: 1
 category: research
-redirect: /blog/2026/reproducing-lewm/
+github: https://github.com/kev-hanwen-yang/le-wm
+redirect: /blog/2026/lewm-latent-dynamics/
 ---

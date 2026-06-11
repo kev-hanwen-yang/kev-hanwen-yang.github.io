@@ -62,3 +62,10 @@ horizontal: false
   {% endif %}
 {% endif %}
 </div>
+
+<style>
+  /* Enlarge the GitHub repo icon on project cards */
+  .projects .github-icon .gh-icon {
+    font-size: 2rem;
+  }
+</style>
