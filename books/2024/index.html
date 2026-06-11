@@ -1,4 +1,4 @@
-<!DOCTYPE html> <html lang="en"> <head> <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"> <meta charset="utf-8"> <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"> <meta http-equiv="X-UA-Compatible" content="IE=edge"> <title> 2024 | Hanwen Yang </title> <meta name="author" content="Hanwen Yang"> <meta name="description" content="Research notes on self-supervised video representation learning, JEPA-style latent world models, and embodied intelligence. "> <meta name="keywords" content="self-supervised learning, video representation learning, world models, JEPA, latent predictive models, embodied intelligence, robot learning"> <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' data: https:; media-src 'self' https:; frame-src 'self' https:; connect-src 'self' https:;"> <style>
+<!DOCTYPE html> <html lang="en"> <head> <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"> <meta charset="utf-8"> <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"> <meta http-equiv="X-UA-Compatible" content="IE=edge"> <title> 2024 | Hanwen Yang </title> <meta name="author" content="Hanwen Yang"> <meta name="description" content="Research notes on self-supervised representation learning, JEPA-style latent world models, and embodied intelligence. "> <meta name="keywords" content="self-supervised learning, video representation learning, world models, JEPA, latent predictive models, embodied intelligence, robot learning"> <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' data: https:; media-src 'self' https:; frame-src 'self' https:; connect-src 'self' https:;"> <style>
   :root {
     --max-content-width: 930px;
   }
@@ -24,7 +24,7 @@ ninja.data = [{
     },
   },{id: "nav-blog",
           title: "blog",
-          description: "Research notes on self-supervised video representation learning, latent world models, and embodied intelligence.",
+          description: "Research notes on self-supervised representation learning, latent world models, and embodied intelligence.",
           section: "Navigation",
           handler: () => {
             window.location.href = "/blog/";
@@ -52,11 +52,16 @@ ninja.data = [{
           description: "",
           section: "Books",handler: () => {
               window.location.href = "/books/the_godfather/";
-            },},{id: "projects-reproducing-lewm",
-          title: 'Reproducing LeWM',
-          description: "A from-scratch reproduction and diagnostic study of LeWM, a compact latent world model — its SIGReg objective, action-conditioned latent prediction, and open-loop rollout behavior.",
+            },},{id: "projects-diagnosing-lewm-s-long-horizon-rollouts-stable-latents-wrong-futures",
+          title: 'Diagnosing LeWM’s Long-Horizon Rollouts: Stable Latents, Wrong Futures',
+          description: "Independent research project. Reproduced the published LeWM Push-T probing results, then analysed long-horizon open-loop latent rollouts using probe-based state recovery, latent-space geometric diagnostics, and teacher-forced controls.",
           section: "Projects",handler: () => {
               window.location.href = "/projects/1_lewm/";
+            },},{id: "projects-rvss-need4speed-learning-based-autonomous-driving",
+          title: 'RVSS Need4Speed — Learning-Based Autonomous Driving',
+          description: "Team ML/robotics project. CNN-based imitation learning pipeline for autonomous driving, spanning data collection, model training, on-robot deployment, and debugging under real hardware and time constraints.",
+          section: "Projects",handler: () => {
+              window.location.href = "/projects/2_rvss/";
             },},{id: "teachings-data-science-fundamentals",
           title: 'Data Science Fundamentals',
           description: "This course covers the foundational aspects of data science, including data collection, cleaning, analysis, and visualization. Students will learn practical skills for working with real-world datasets.",
@@ -87,13 +92,6 @@ ninja.data = [{
         section: 'Socials',
         handler: () => {
           window.open("https://www.linkedin.com/in/kevinyang0047", "_blank");
-        },
-      },{
-        id: 'social-rss',
-        title: 'RSS Feed',
-        section: 'Socials',
-        handler: () => {
-          window.open("/feed.xml", "_blank");
         },
       },{
       id: 'light-theme',
