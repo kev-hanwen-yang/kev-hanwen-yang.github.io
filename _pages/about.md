@@ -25,8 +25,7 @@ latest_posts:
   limit: 3 # leave blank to include all the blog posts
 ---
 I'm an independent ML researcher working on self-supervised representation
-learning and latent world models — JEPA-style architectures that predict in
-representation space — and how they can support embodied agents that build an
+learning, world models and how they can support embodied agents that build an
 internal model of the world from observation and action. Currently applying for graduate
 research positions (2027 commencement).
 
