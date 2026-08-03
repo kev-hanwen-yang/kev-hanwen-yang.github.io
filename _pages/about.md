@@ -24,12 +24,11 @@ latest_posts:
   scrollable: true # adds a vertical scroll bar if there are more than 3 new posts items
   limit: 3 # leave blank to include all the blog posts
 ---
-I'm an independent ML researcher working on self-supervised representation
-learning, world models and how they can support embodied agents that build an
-internal model of the world from observation and action. Currently applying for graduate
-research positions (2027 commencement).
+I'm an independent ML researcher and incoming graduate research candidate at Australian Institute for Machine Learning (AIML),  
+working on self-supervised representation learning, world models and how they can support embodied agents that build an
+internal model of the world from observation and action.
 
-**Recent work: [Diagnosing LeWM's Long-Horizon Rollouts: Stable Latents, Wrong Futures](https://kev-hanwen-yang.github.io/blog/2026/lewm-latent-dynamics/)**
+**Recent work: [Long-Horizon Rollout Diagnostics for Latent World Models: LeWM on Push-T](https://kev-hanwen-yang.github.io/blog/2026/lewm-latent-dynamics/)**
 
 I reproduced LeWM, a compact JEPA-style latent world model (SIGReg-regularised,
 action-conditioned latent prediction), and asked whether its stable-looking
