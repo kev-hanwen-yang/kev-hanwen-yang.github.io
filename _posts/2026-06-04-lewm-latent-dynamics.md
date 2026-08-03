@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Diagnosing LeWM’s Long-Horizon Rollouts: Stable Latents, Wrong Futures"
+title: "Long-Horizon Rollout Diagnostics for Latent World Models: LeWM on Push-T"
 date: 2026-06-04
 description: A mechanistic study of how open-loop latent predictions preserve global geometry while losing task-relevant physical state.
 tags: world-models self-supervised-learning jepa long-horizon-planning
