@@ -24,9 +24,7 @@ latest_posts:
   scrollable: true # adds a vertical scroll bar if there are more than 3 new posts items
   limit: 3 # leave blank to include all the blog posts
 ---
-I'm an independent ML researcher and incoming graduate research candidate at Australian Institute for Machine Learning (AIML),  
-working on self-supervised representation learning, world models and how they can support embodied agents that build an
-internal model of the world from observation and action.
+I'm an independent ML researcher and incoming graduate research candidate at Australian Institute for Machine Learning (AIML), working on self-supervised representation learning, world models and how they can support embodied agents that build an internal model of the world from observation and action.
 
 **Recent work: [Long-Horizon Rollout Diagnostics for Latent World Models: LeWM on Push-T](https://kev-hanwen-yang.github.io/blog/2026/lewm-latent-dynamics/)**
 
