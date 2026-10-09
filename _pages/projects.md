@@ -4,7 +4,7 @@ title: projects
 permalink: /projects/
 description: Hands-on research projects and reproductions.
 nav: true
-nav_order: 2
+nav_order: 3
 horizontal: false
 ---
 

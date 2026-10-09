@@ -4,7 +4,7 @@ permalink: /blog/
 title: blog
 description: Research notes on self-supervised representation learning, world models, and embodied intelligence.
 nav: true
-nav_order: 1
+nav_order: 2
 pagination:
   enabled: true
   collection: posts

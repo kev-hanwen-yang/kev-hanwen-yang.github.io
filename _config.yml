@@ -333,8 +333,8 @@ display_categories: ["research-notes"] # these categories will be displayed on t
 # -----------------------------------------------------------------------------
 
 scholar:
-  last_name: [Einstein]
-  first_name: [Albert, A.]
+  last_name: [Yang]
+  first_name: [Hanwen, H.]
 
   style: apa
   locale: en
